@@ -1,0 +1,6 @@
+core:
+  build: .
+  volumes:
+    - .:/go/src/github.com/quillercs/core
+  ports:
+    - 3000:3000
