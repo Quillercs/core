@@ -17,5 +17,5 @@ func main() {
 	http.Handle("/", middleware.CheckEngine(indexHandler))
 
 	log.Println("Running...")
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe("127.0.0.1:3000", nil)
 }
