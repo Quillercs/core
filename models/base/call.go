@@ -1,4 +1,4 @@
-package models
+package base
 
 const (
 	CALL_DIRECTION_INBOUND = iota

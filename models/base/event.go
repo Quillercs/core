@@ -1,4 +1,4 @@
-package models
+package base
 
 const (
 	EVENT_CUSTOM = iota

@@ -1,4 +1,4 @@
-package models
+package base
 
 type Extension struct {
 	Name       string `json:"name"`

@@ -1,4 +1,4 @@
-package models
+package base
 
 const (
 	CHANNEL_CALL_STATE_DOWN = iota

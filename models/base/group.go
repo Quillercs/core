@@ -1,4 +1,4 @@
-package models
+package base
 
 type Group struct {
 	Name       string `json:"name"`
