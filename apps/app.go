@@ -1,9 +1,11 @@
-package base
+package apps
+
+import "github.com/quillercs/core/event"
 
 type Args map[string]string
 
 type AppInterface interface {
-	Load(args Args) error
+	Load(*event.EventMachine) error
 	Execute(args Args) error
 	Unload()
 }
@@ -14,6 +16,7 @@ type App struct {
 	MajorVersion string
 	MinorVersion string
 	Loaded       bool
+	*event.EventMachine
 }
 
 func NewAppBase(uid, name, mjVersion, mnVersion string) *AppBase {

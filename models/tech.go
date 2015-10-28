@@ -1,4 +1,4 @@
-package base
+package models
 
 type Tech struct {
 	TechType int `json:"tech_type"`
