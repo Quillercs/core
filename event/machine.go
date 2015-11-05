@@ -1,84 +1,61 @@
 package event
 
 import (
+	"log"
 	"reflect"
 	"runtime"
 	"sync"
 	"time"
-
-	"github.com/quillercs/core/models"
-	"github.com/quillercs/core/utils"
 )
 
-type eventFunc func(event models.Event)
-
-type listener struct {
-	sync.Mutex
-	eventID   string
-	eventFunc eventFunc
-	once      bool
-	done      bool
-	UUID      string
+type Machine struct {
+	sync.RWMutex
+	events chan Event
+	listeners
 }
 
-type EventMachine struct {
-	sync.Mutex
-	queue     *utils.Queue
-	listeners []*listener
+func NewMachine() *Machine {
+	m := &Machine{}
+	m.events = make(chan Event)
+	return m
 }
 
-func NewEventMachine() *EventMachine {
-	return &EventMachine{
-		queue: utils.NewQueue(),
-	}
-}
+func (m *Machine) Start() {
+	go func() {
+		ticker := time.NewTicker(time.Second * 1)
+		for now := range ticker.C {
+			_ = now
+			m.removeDone()
+		}
+	}()
 
-func (e *EventMachine) Push(event models.Event) {
-	e.queue.Push(event)
-}
-
-func (e *EventMachine) Start() {
-	for i := 0; i < 10; i++ {
-		go func() {
-			ticker := time.NewTicker(time.Second * 1)
-			for now := range ticker.C {
-				_ = now
-				e.removeDone()
-			}
-		}()
-
-		go func() {
-			for {
-				event := e.queue.Pop()
-				if event != nil {
-					go e.Dispatch(event.(models.Event))
-				}
-
+	go func() {
+		for {
+			select {
+			case event := <-m.events:
+				go m.dispatch(event)
+			default:
 				runtime.Gosched()
 				time.Sleep(time.Millisecond)
 			}
-		}()
-	}
-}
-
-func (e *EventMachine) removeDone() {
-	e.Lock()
-	defer e.Unlock()
-
-	i := 0
-	for _, listener := range e.listeners {
-		if listener != nil && listener.done {
-			e.listeners, e.listeners[len(e.listeners)-1] = append(e.listeners[:i], e.listeners[i+1:]...), nil
 		}
-		i++
-	}
+	}()
+
+	m.Push(CreateEvent("core::running"))
+
+	m.OnceEvent("core::status", func(ev Event) {
+		log.Println("Response status", ev)
+		newEvent := CreateResponseEvent(ev)
+		newEvent.Data = []byte("Running")
+		m.Push(newEvent)
+	})
 }
 
-func (e *EventMachine) Dispatch(event models.Event) {
-	e.Lock()
-	defer e.Unlock()
+func (m *Machine) dispatch(event Event) {
+	m.Lock()
+	defer m.Unlock()
 
-	for _, listener := range e.listeners {
+	for _, listener := range m.listeners {
 		if listener.eventID == event.ID && !listener.done {
 			listener.eventFunc(event)
 
@@ -89,35 +66,54 @@ func (e *EventMachine) Dispatch(event models.Event) {
 	}
 }
 
-func (e *EventMachine) OnEvent(eventID string, eventFunc eventFunc) {
-	e.Lock()
-	defer e.Unlock()
+func (m *Machine) removeDone() {
+	m.Lock()
+	defer m.Unlock()
 
-	e.listeners = append(e.listeners, &listener{
-		eventID:   eventID,
-		eventFunc: eventFunc,
-		once:      false,
-	})
+	i := 0
+	for _, listener := range m.listeners {
+		if listener != nil && listener.done {
+			m.listeners, m.listeners[len(m.listeners)-1] = append(m.listeners[:i], m.listeners[i+1:]...), nil
+		}
+		i++
+	}
 }
 
-func (e *EventMachine) OnceEvent(eventID string, eventFunc eventFunc) {
-	e.Lock()
-	defer e.Unlock()
+func (m *Machine) Push(event Event) {
+	go func() {
+		m.events <- event
+	}()
+}
 
-	e.listeners = append(e.listeners, &listener{
+func (m *Machine) OnceEvent(eventID string, eventFunc eventFunc) {
+	m.Lock()
+	defer m.Unlock()
+
+	m.listeners = append(m.listeners, &listener{
 		eventID:   eventID,
 		eventFunc: eventFunc,
 		once:      true,
 	})
 }
 
-func (e *EventMachine) Command(eventID, eventIDRes string, ef eventFunc) {
-	ev := models.CreateEvent(eventID)
-	e.queue.Push(ev)
+func (m *Machine) OnEvent(eventID string, eventFunc eventFunc) {
+	m.Lock()
+	defer m.Unlock()
 
-	e.OnceEvent(eventIDRes, func(event models.Event) {
+	m.listeners = append(m.listeners, &listener{
+		eventID:   eventID,
+		eventFunc: eventFunc,
+	})
+}
+
+func (m *Machine) Command(eventID string, eventFunc eventFunc) {
+	ev := CreateEvent(eventID)
+
+	m.OnceEvent(eventID+"::response", func(event Event) {
 		if reflect.DeepEqual(event.UUID, ev.UUID) {
-			ef(event)
+			eventFunc(event)
 		}
 	})
+
+	m.Push(ev)
 }
